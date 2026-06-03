@@ -5,9 +5,9 @@
 #include "reducer.h"
 #include "utils.h"
 
-std::tuple<torch::Tensor, torch::optional<torch::Tensor>>
+std::tuple<torch::Tensor, std::optional<torch::Tensor>>
 spmm_cpu(torch::Tensor rowptr, torch::Tensor col,
-         torch::optional<torch::Tensor> optional_value, torch::Tensor mat,
+         std::optional<torch::Tensor> optional_value, torch::Tensor mat,
          std::string reduce) {
   CHECK_CPU(rowptr);
   CHECK_CPU(col);
@@ -29,7 +29,7 @@ spmm_cpu(torch::Tensor rowptr, torch::Tensor col,
   sizes[mat.dim() - 2] = rowptr.numel() - 1;
   auto out = torch::empty(sizes, mat.options());
 
-  torch::optional<torch::Tensor> arg_out = torch::nullopt;
+  std::optional<torch::Tensor> arg_out = std::nullopt;
   int64_t *arg_out_data = nullptr;
   if (reduce2REDUCE.at(reduce) == MIN || reduce2REDUCE.at(reduce) == MAX) {
     arg_out = torch::full_like(out, col.numel(), rowptr.options());
@@ -44,7 +44,7 @@ spmm_cpu(torch::Tensor rowptr, torch::Tensor col,
   auto K = mat.size(-1);
   auto B = mat.numel() / (N * K);
 
-  AT_DISPATCH_ALL_TYPES_AND(at::ScalarType::Half, mat.scalar_type(), "_", [&] {
+  AT_DISPATCH_ALL_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, mat.scalar_type(), "spmm_cpu", [&] {
     scalar_t *value_data = nullptr;
     auto mat_data = mat.data_ptr<scalar_t>();
     auto out_data = out.data_ptr<scalar_t>();
@@ -118,12 +118,12 @@ torch::Tensor spmm_value_bw_cpu(torch::Tensor row, torch::Tensor rowptr,
   auto K = mat.size(-1);
   auto B = mat.numel() / (N * K);
 
-  auto out = torch::zeros(row.numel(), grad.options());
+  auto out = torch::zeros({row.numel()}, grad.options());
 
   auto row_data = row.data_ptr<int64_t>();
   auto rowptr_data = rowptr.data_ptr<int64_t>();
   auto col_data = col.data_ptr<int64_t>();
-  AT_DISPATCH_ALL_TYPES_AND(at::ScalarType::Half, mat.scalar_type(), "_", [&] {
+  AT_DISPATCH_ALL_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, mat.scalar_type(), "spmm_value_bw_cpu", [&] {
     auto mat_data = mat.data_ptr<scalar_t>();
     auto grad_data = grad.data_ptr<scalar_t>();
     auto out_data = out.data_ptr<scalar_t>();

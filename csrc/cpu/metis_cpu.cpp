@@ -11,8 +11,8 @@
 #include "utils.h"
 
 torch::Tensor partition_cpu(torch::Tensor rowptr, torch::Tensor col,
-                            torch::optional<torch::Tensor> optional_value,
-                            torch::optional<torch::Tensor> optional_node_weight,
+                            std::optional<torch::Tensor> optional_value,
+                            std::optional<torch::Tensor> optional_node_weight,
                             int64_t num_parts, bool recursive) {
 #ifdef WITH_METIS
   CHECK_CPU(rowptr);
@@ -44,7 +44,7 @@ torch::Tensor partition_cpu(torch::Tensor rowptr, torch::Tensor col,
     vwgt = optional_node_weight.value().data_ptr<int64_t>();
 
   int64_t objval = -1;
-  auto part = torch::empty(nvtxs, rowptr.options());
+  auto part = torch::empty({nvtxs}, rowptr.options());
   auto part_data = part.data_ptr<int64_t>();
 
   if (recursive) {
@@ -66,8 +66,8 @@ torch::Tensor partition_cpu(torch::Tensor rowptr, torch::Tensor col,
 //             --partitions64bit
 torch::Tensor
 mt_partition_cpu(torch::Tensor rowptr, torch::Tensor col,
-                 torch::optional<torch::Tensor> optional_value,
-                 torch::optional<torch::Tensor> optional_node_weight,
+                 std::optional<torch::Tensor> optional_value,
+                 std::optional<torch::Tensor> optional_node_weight,
                  int64_t num_parts, bool recursive, int64_t num_workers) {
 #ifdef WITH_MTMETIS
   CHECK_CPU(rowptr);
@@ -99,7 +99,7 @@ mt_partition_cpu(torch::Tensor rowptr, torch::Tensor col,
 
   mtmetis_pid_type nparts = num_parts;
   mtmetis_wgt_type objval = -1;
-  auto part = torch::empty(nvtxs, rowptr.options());
+  auto part = torch::empty({nvtxs}, rowptr.options());
   mtmetis_pid_type *part_data = (mtmetis_pid_type *)part.data_ptr<int64_t>();
 
   double *opts = mtmetis_init_options();

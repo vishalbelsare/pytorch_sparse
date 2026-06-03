@@ -63,9 +63,9 @@ __global__ void spmm_kernel(const int64_t *rowptr_data, const int64_t *col_data,
 #pragma unroll
       for (int i = 0; i < 32; i++) {
         // Communication between all threads in a warp.
-        mat_rows[i] = __shfl_sync(FULL_MASK, mat_row, i);
+        mat_rows[i] = SHFL_SYNC(FULL_MASK, mat_row, i);
         if (HAS_VALUE)
-          vals[i] = __shfl_sync(FULL_MASK, val, i);
+          vals[i] = SHFL_SYNC(FULL_MASK, val, i);
       }
 
 #pragma unroll
@@ -89,9 +89,9 @@ __global__ void spmm_kernel(const int64_t *rowptr_data, const int64_t *col_data,
   }
 }
 
-std::tuple<torch::Tensor, torch::optional<torch::Tensor>>
+std::tuple<torch::Tensor, std::optional<torch::Tensor>>
 spmm_cuda(torch::Tensor rowptr, torch::Tensor col,
-          torch::optional<torch::Tensor> optional_value, torch::Tensor mat,
+          std::optional<torch::Tensor> optional_value, torch::Tensor mat,
           std::string reduce) {
 
   CHECK_CUDA(rowptr);
@@ -99,7 +99,7 @@ spmm_cuda(torch::Tensor rowptr, torch::Tensor col,
   if (optional_value.has_value())
     CHECK_CUDA(optional_value.value());
   CHECK_CUDA(mat);
-  cudaSetDevice(rowptr.get_device());
+  c10::cuda::MaybeSetDevice(rowptr.get_device());
 
   CHECK_INPUT(rowptr.dim() == 1);
   CHECK_INPUT(col.dim() == 1);
@@ -115,7 +115,7 @@ spmm_cuda(torch::Tensor rowptr, torch::Tensor col,
   sizes[mat.dim() - 2] = rowptr.numel() - 1;
   auto out = torch::empty(sizes, mat.options());
 
-  torch::optional<torch::Tensor> arg_out = torch::nullopt;
+  std::optional<torch::Tensor> arg_out = std::nullopt;
   int64_t *arg_out_data = nullptr;
   if (reduce2REDUCE.at(reduce) == MIN || reduce2REDUCE.at(reduce) == MAX) {
     arg_out = torch::full_like(out, col.numel(), rowptr.options());
@@ -179,7 +179,7 @@ spmm_value_bw_kernel(const int64_t *row_data, const int64_t *rowptr_data,
 
 #pragma unroll
     for (int i = 32 / 2; i > 0; i /= 2) { // Parallel reduction inside a warp.
-      val += __shfl_down_sync(FULL_MASK, val, i);
+      val += SHFL_DOWN_SYNC(FULL_MASK, val, i);
     }
 
     if (lane_idx == 0) {
@@ -201,7 +201,7 @@ torch::Tensor spmm_value_bw_cuda(torch::Tensor row, torch::Tensor rowptr,
   CHECK_CUDA(col);
   CHECK_CUDA(mat);
   CHECK_CUDA(grad);
-  cudaSetDevice(row.get_device());
+  c10::cuda::MaybeSetDevice(row.get_device());
 
   mat = mat.contiguous();
   grad = grad.contiguous();
@@ -213,7 +213,7 @@ torch::Tensor spmm_value_bw_cuda(torch::Tensor row, torch::Tensor rowptr,
   auto B = mat.numel() / (N * K);
   auto BLOCKS = dim3((E * 32 + THREADS - 1) / THREADS);
 
-  auto out = torch::zeros(row.numel(), grad.options());
+  auto out = torch::zeros({row.numel()}, grad.options());
 
   auto row_data = row.data_ptr<int64_t>();
   auto rowptr_data = rowptr.data_ptr<int64_t>();

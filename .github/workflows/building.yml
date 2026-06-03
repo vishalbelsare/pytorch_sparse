@@ -2,6 +2,10 @@ name: Building Wheels
 
 on: [workflow_dispatch]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
 
   wheel:
@@ -10,33 +14,50 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-18.04, macos-10.15, windows-latest]
-        python-version: [3.6, 3.7, 3.8, 3.9]
-        torch-version: [1.10.0]
-        cuda-version: ['cpu', 'cu102', 'cu111', 'cu113']
+        os: [ubuntu-22.04, macos-14, windows-2022, ubuntu-22.04-arm]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        torch-version: [2.12.0]
+        cuda-version: ['cpu', 'cu126', 'cu130', 'cu132']
         exclude:
-          - torch-version: 1.9.0
-            cuda-version: 'cu113'
-          - torch-version: 1.10.0
-            cuda-version: 'cu111'
-          - os: macos-10.15
-            cuda-version: 'cu102'
-          - os: macos-10.15
-            cuda-version: 'cu111'
-          - os: macos-10.15
-            cuda-version: 'cu113'
+          - os: windows-2022
+            cuda-version: 'cu130'
+          - os: windows-2022
+            cuda-version: 'cu132'
+          - os: macos-14
+            cuda-version: 'cu126'
+          - os: macos-14
+            cuda-version: 'cu130'
+          - os: macos-14
+            cuda-version: 'cu132'
+          - os: ubuntu-22.04-arm
+            cuda-version: 'cu126'
+          - os: ubuntu-22.04-arm
+            cuda-version: 'cu130'
+          - os: ubuntu-22.04-arm
+            cuda-version: 'cu132'
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Free up disk space
-        if: ${{ runner.os == 'Linux' }}
+      - name: Upgrade pip
         run: |
-          sudo rm -rf /usr/share/dotnet
+          pip install --upgrade setuptools
+          pip install wheel
+
+      - name: Install scipy
+        run: |
+          pip install scipy
+
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ runner.os == 'Linux' }}
+        uses: jlumbroso/free-disk-space@main
 
       - name: Install CUDA ${{ matrix.cuda-version }}
         if: ${{ matrix.cuda-version != 'cpu' }}
@@ -45,10 +66,19 @@ jobs:
 
       - name: Install PyTorch ${{ matrix.torch-version }}+${{ matrix.cuda-version }}
         run: |
-          pip install numpy typing-extensions dataclasses
-          pip install --no-index --no-cache-dir torch==${{ matrix.torch-version}} -f https://download.pytorch.org/whl/${{ matrix.cuda-version }}/torch_stable.html
+          pip install torch==${{ matrix.torch-version }} --extra-index-url https://download.pytorch.org/whl/${{ matrix.cuda-version }}
           python -c "import torch; print('PyTorch:', torch.__version__)"
           python -c "import torch; print('CUDA:', torch.version.cuda)"
+
+      - name: Set version
+        if: ${{ runner.os != 'macOS' }}
+        run: |
+          VERSION=`sed -n "s/^__version__ = '\(.*\)'/\1/p" torch_sparse/__init__.py`
+          TORCH_VERSION=`echo "pt${{ matrix.torch-version }}" | sed "s/..$//" | sed "s/\.//g"`
+          CUDA_VERSION=`echo ${{ matrix.cuda-version }}`
+          echo "New version name: $VERSION+$TORCH_VERSION$CUDA_VERSION"
+          sed -i "s/$VERSION/$VERSION+$TORCH_VERSION$CUDA_VERSION/" setup.py
+          sed -i "s/$VERSION/$VERSION+$TORCH_VERSION$CUDA_VERSION/" torch_sparse/__init__.py
 
       - name: Install torch-scatter
         run: |
@@ -58,31 +88,30 @@ jobs:
         if: ${{ runner.os != 'Windows' }}
         run: |
           bash .github/workflows/metis.sh
+          echo WITH_METIS=1 >> $GITHUB_ENV
 
       - name: Install METIS on Windows
         if: ${{ runner.os == 'Windows' }}
         run: |
-          bash .github/workflows/metis-${{ runner.os }}.sh
+          # bash .github/workflows/metis-${{ runner.os }}.sh
+          echo WITH_METIS=0 >> $GITHUB_ENV
 
-      - name: Install main package for CPU
+      - name: Build wheel for CPU
         if: ${{ matrix.cuda-version == 'cpu' }}
         run: |
-          FORCE_ONLY_CPU=1 WITH_METIS=1 pip install -e .
-        shell:
-          bash
+          python setup.py bdist_wheel --dist-dir=dist
+        env:
+          FORCE_ONLY_CPU: 1
+          WITH_METIS: ${{ env.WITH_METIS }}
 
-      - name: Install main package for GPU
+      - name: Build wheel for GPU
         if: ${{ matrix.cuda-version != 'cpu' }}
         run: |
           source .github/workflows/cuda/${{ matrix.cuda-version }}-${{ runner.os }}-env.sh
-          WITH_METIS=1 pip install -e .
-        shell:
-          bash
-
-      - name: Build wheel
-        run: |
-          pip install wheel
           python setup.py bdist_wheel --dist-dir=dist
+        env:
+          FORCE_CUDA: 1
+          WITH_METIS: ${{ env.WITH_METIS }}
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v1

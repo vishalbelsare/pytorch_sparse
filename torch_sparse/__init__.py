@@ -3,12 +3,11 @@ import os.path as osp
 
 import torch
 
-__version__ = '0.6.12'
+__version__ = '0.6.18'
 
 for library in [
-        '_version', '_convert', '_diag', '_spmm', '_spspmm', '_metis', '_rw',
-        '_saint', '_sample', '_ego_sample', '_hgt_sample', '_neighbor_sample',
-        '_relabel'
+        '_version', '_convert', '_diag', '_spmm', '_metis', '_rw', '_saint',
+        '_sample', '_ego_sample', '_hgt_sample', '_neighbor_sample', '_relabel'
 ]:
     cuda_spec = importlib.machinery.PathFinder().find_spec(
         f'{library}_cuda', [osp.dirname(__file__)])
@@ -22,7 +21,7 @@ for library in [
                           f"{osp.dirname(__file__)}")
 
 cuda_version = torch.ops.torch_sparse.cuda_version()
-if torch.cuda.is_available() and cuda_version != -1:  # pragma: no cover
+if torch.version.cuda is not None and cuda_version != -1:  # pragma: no cover
     if cuda_version < 10000:
         major, minor = int(str(cuda_version)[0]), int(str(cuda_version)[2])
     else:
@@ -55,7 +54,6 @@ from .rw import random_walk  # noqa
 from .metis import partition  # noqa
 from .bandwidth import reverse_cuthill_mckee  # noqa
 from .saint import saint_subgraph  # noqa
-from .padding import padded_index, padded_index_select  # noqa
 from .sample import sample, sample_adj  # noqa
 
 from .convert import to_torch_sparse, from_torch_sparse  # noqa
@@ -101,8 +99,6 @@ __all__ = [
     'partition',
     'reverse_cuthill_mckee',
     'saint_subgraph',
-    'padded_index',
-    'padded_index_select',
     'to_torch_sparse',
     'from_torch_sparse',
     'to_scipy',

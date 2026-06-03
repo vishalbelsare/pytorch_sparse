@@ -43,7 +43,7 @@ torch::Tensor non_diag_mask_cuda(torch::Tensor row, torch::Tensor col,
                                  int64_t M, int64_t N, int64_t k) {
   CHECK_CUDA(row);
   CHECK_CUDA(col);
-  cudaSetDevice(row.get_device());
+  c10::cuda::MaybeSetDevice(row.get_device());
 
   auto E = row.size(0);
   auto num_diag = k < 0 ? std::min(M + k, N) : std::min(M, N - k);
@@ -51,7 +51,7 @@ torch::Tensor non_diag_mask_cuda(torch::Tensor row, torch::Tensor col,
   auto row_data = row.data_ptr<int64_t>();
   auto col_data = col.data_ptr<int64_t>();
 
-  auto mask = torch::zeros(E + num_diag, row.options().dtype(torch::kBool));
+  auto mask = torch::zeros({E + num_diag}, row.options().dtype(torch::kBool));
   auto mask_data = mask.data_ptr<bool>();
 
   if (E == 0)

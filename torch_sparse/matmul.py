@@ -1,6 +1,8 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
+from torch import Tensor
+
 from torch_sparse.tensor import SparseTensor
 
 
@@ -74,7 +76,8 @@ def spmm_max(src: SparseTensor,
     return torch.ops.torch_sparse.spmm_max(rowptr, col, value, other)
 
 
-def spmm(src: SparseTensor, other: torch.Tensor,
+def spmm(src: SparseTensor,
+         other: torch.Tensor,
          reduce: str = "sum") -> torch.Tensor:
     if reduce == 'sum' or reduce == 'add':
         return spmm_sum(src, other)
@@ -89,28 +92,31 @@ def spmm(src: SparseTensor, other: torch.Tensor,
 
 
 def spspmm_sum(src: SparseTensor, other: SparseTensor) -> SparseTensor:
-    assert src.sparse_size(1) == other.sparse_size(0)
-    rowptrA, colA, valueA = src.csr()
-    rowptrB, colB, valueB = other.csr()
-    value = valueA if valueA is not None else valueB
-    if valueA is not None and valueA.dtype == torch.half:
-        valueA = valueA.to(torch.float)
-    if valueB is not None and valueB.dtype == torch.half:
-        valueB = valueB.to(torch.float)
-    M, K = src.sparse_size(0), other.sparse_size(1)
-    rowptrC, colC, valueC = torch.ops.torch_sparse.spspmm_sum(
-        rowptrA, colA, valueA, rowptrB, colB, valueB, K)
-    if valueC is not None and value is not None:
-        valueC = valueC.to(value.dtype)
-    return SparseTensor(row=None, rowptr=rowptrC, col=colC, value=valueC,
-                        sparse_sizes=(M, K), is_sorted=True)
+    A = src.to_torch_sparse_coo_tensor()
+    B = other.to_torch_sparse_coo_tensor()
+    C = torch.sparse.mm(A, B)
+    edge_index = C._indices()
+    row, col = edge_index[0], edge_index[1]
+    value: Optional[Tensor] = None
+    if src.has_value() or other.has_value():
+        value = C._values()
+
+    return SparseTensor(
+        row=row,
+        col=col,
+        value=value,
+        sparse_sizes=(C.size(0), C.size(1)),
+        is_sorted=True,
+        trust_data=True,
+    )
 
 
 def spspmm_add(src: SparseTensor, other: SparseTensor) -> SparseTensor:
     return spspmm_sum(src, other)
 
 
-def spspmm(src: SparseTensor, other: SparseTensor,
+def spspmm(src: SparseTensor,
+           other: SparseTensor,
            reduce: str = "sum") -> SparseTensor:
     if reduce == 'sum' or reduce == 'add':
         return spspmm_sum(src, other)
@@ -133,6 +139,23 @@ def matmul(src, other, reduce):  # noqa: F811
 
 
 def matmul(src, other, reduce="sum"):  # noqa: F811
+    """Matrix product of a sparse tensor with either another sparse tensor or a
+     dense tensor. The sparse tensor represents an adjacency matrix and is
+     stored as a list of edges. This method multiplies elements along the rows
+     of the adjacency matrix with the column of the other matrix. In regular
+     matrix multiplication, the products are then summed together, but this
+     method allows us to use other aggregation functions as well.
+
+    Args:
+        src (:class:`SparseTensor`): The sparse tensor.
+        other (:class:`Tensor` or :class:`SparseTensor`): The second matrix.
+        reduce (string, optional): The function to reduce along the rows of
+            :obj:`src` and columns of :obj:`other`. Can be :obj:`"sum"`,
+            :obj:`"mean"`, :obj:`"min"` or :obj:`"max"`.
+            (default: :obj:`"sum"`)
+
+    :rtype: (:class:`Tensor`)
+    """
     if isinstance(other, torch.Tensor):
         return spmm(src, other, reduce)
     elif isinstance(other, SparseTensor):

@@ -16,7 +16,8 @@ PyMODINIT_FUNC PyInit__neighbor_sample_cpu(void) { return NULL; }
 #endif
 
 // Returns 'output_node', 'row', 'col', 'output_edge'
-SPARSE_API std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+SPARSE_API
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 neighbor_sample(const torch::Tensor &colptr, const torch::Tensor &row,
                 const torch::Tensor &input_node,
                 const std::vector<int64_t> num_neighbors, const bool replace,
@@ -25,7 +26,8 @@ neighbor_sample(const torch::Tensor &colptr, const torch::Tensor &row,
                              directed);
 }
 
-SPARSE_API std::tuple<c10::Dict<node_t, torch::Tensor>, c10::Dict<rel_t, torch::Tensor>,
+SPARSE_API
+std::tuple<c10::Dict<node_t, torch::Tensor>, c10::Dict<rel_t, torch::Tensor>,
            c10::Dict<rel_t, torch::Tensor>, c10::Dict<rel_t, torch::Tensor>>
 hetero_neighbor_sample(
     const std::vector<node_t> &node_types,
@@ -40,7 +42,25 @@ hetero_neighbor_sample(
       num_neighbors_dict, num_hops, replace, directed);
 }
 
+std::tuple<c10::Dict<node_t, torch::Tensor>, c10::Dict<rel_t, torch::Tensor>,
+           c10::Dict<rel_t, torch::Tensor>, c10::Dict<rel_t, torch::Tensor>>
+hetero_temporal_neighbor_sample(
+    const std::vector<node_t> &node_types,
+    const std::vector<edge_t> &edge_types,
+    const c10::Dict<rel_t, torch::Tensor> &colptr_dict,
+    const c10::Dict<rel_t, torch::Tensor> &row_dict,
+    const c10::Dict<node_t, torch::Tensor> &input_node_dict,
+    const c10::Dict<rel_t, std::vector<int64_t>> &num_neighbors_dict,
+    const c10::Dict<node_t, torch::Tensor> &node_time_dict,
+    const int64_t num_hops, const bool replace, const bool directed) {
+  return hetero_temporal_neighbor_sample_cpu(
+      node_types, edge_types, colptr_dict, row_dict, input_node_dict,
+      num_neighbors_dict, node_time_dict, num_hops, replace, directed);
+}
+
 static auto registry =
     torch::RegisterOperators()
         .op("torch_sparse::neighbor_sample", &neighbor_sample)
-        .op("torch_sparse::hetero_neighbor_sample", &hetero_neighbor_sample);
+        .op("torch_sparse::hetero_neighbor_sample", &hetero_neighbor_sample)
+        .op("torch_sparse::hetero_temporal_neighbor_sample",
+            &hetero_temporal_neighbor_sample);
